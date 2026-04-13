@@ -1,0 +1,316 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique
+  password  String
+  name      String
+  role      String
+  initials  String
+  title     String
+  teamId    Int?
+  createdAt DateTime @default(now())
+  team      Team?    @relation(fields: [teamId], references: [id])
+}
+
+model Team {
+  id       Int                   @id @default(autoincrement())
+  name     String                @unique
+  tlName   String
+  maxQuota Int                   @default(10)
+  impacts  AiImpact[]
+  licenses License[]
+  requests Request[]
+  apps     TeamApp[]
+  users    User[]
+  quotas   TeamAiToolQuota[]
+  githubOrganizations GitHubOrganization[]
+}
+
+model TeamAiToolQuota {
+  id         Int     @id @default(autoincrement())
+  teamId     Int
+  aiTool     String
+  maxQuota   Int     @default(0)
+  team       Team    @relation(fields: [teamId], references: [id])
+
+  @@unique([teamId, aiTool])
+}
+
+model TeamApp {
+  id         Int    @id @default(autoincrement())
+  teamId     Int
+  departemen String
+  aplikasi   String
+  team       Team   @relation(fields: [teamId], references: [id])
+
+  @@unique([teamId, departemen, aplikasi])
+}
+
+model License {
+  id         Int      @id @default(autoincrement())
+  userName   String
+  email      String
+  aiTool     String   @default("Gemini")
+  userType   String   @default("Internal")
+  departemen String
+  aplikasi   String
+  squad      String
+  tlName     String
+  teamId     Int
+  status     String   @default("PENDING")
+  date       String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  team       Team     @relation(fields: [teamId], references: [id])
+}
+
+model Request {
+  id         Int      @id @default(autoincrement())
+  userName   String
+  email      String?
+  userType   String   @default("Internal")
+  tlName     String
+  teamId     Int
+  departemen String
+  aplikasi   String
+  squad      String
+  date       String
+  reason     String
+  aiTool     String   @default("Gemini")
+  createdAt  DateTime @default(now())
+  team       Team     @relation(fields: [teamId], references: [id])
+}
+
+model History {
+  id        Int      @id @default(autoincrement())
+  time      String
+  actor     String
+  role      String
+  action    String
+  target    String
+  note      String
+  createdAt DateTime @default(now())
+}
+
+model Activity {
+  id        Int      @id @default(autoincrement())
+  icon      String
+  cls       String
+  text      String
+  time      String
+  createdAt DateTime @default(now())
+}
+
+model AiImpact {
+  id                Int      @id @default(autoincrement())
+  teamId            Int
+  tlName            String
+  squad             String
+  aplikasi          String
+  aiTool            String   @default("Gemini")
+  period            String
+  manCount          Int
+  daysWithAI        Float
+  daysWithoutAI     Float
+  sqBugs            Int      @default(0)
+  sqVulnerabilities Int      @default(0)
+  sqCodeSmells      Int      @default(0)
+  sqCoverage        Float    @default(0)
+  sqDuplications    Float    @default(0)
+  sqRating          String   @default("A")
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  team              Team     @relation(fields: [teamId], references: [id])
+}
+
+model AiTool {
+  id         Int      @id @default(autoincrement())
+  name       String   @unique
+  totalQuota Int      @default(0)
+  createdAt  DateTime @default(now())
+}
+
+enum Role {
+  ADMIN
+  TL
+  CISO
+  IGA
+}
+
+model GitHubOrganization {
+  id                    Int                   @id @default(autoincrement())
+  organizationName      String                @unique
+  personalAccessToken   String                // Disimpan encrypted, jangan expose
+  enterpriseSlug        String?               // Jika menggunakan GitHub Enterprise
+  teamId                Int
+  isActive              Boolean               @default(true)
+  lastSyncedAt          DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  team                  Team                  @relation(fields: [teamId], references: [id])
+  copilotSeats          CopilotSeatUsage[]
+  seatDetails           CopilotSeatDetail[]
+  members               GitHubMember[]
+  auditLogs             GitHubAuditLog[]
+  billingUsage          GitHubBillingUsage[]
+  billingUsageSummary   GitHubBillingUsageSummary[]
+  userBillingUsage      CopilotUserBillingUsage[]
+}
+
+model CopilotSeatUsage {
+  id                    Int                   @id @default(autoincrement())
+  organizationId        Int
+  totalSeatsPurchased   Int                   @default(0)     // Dari billing/seats endpoint
+  totalSeatsConsumed    Int                   @default(0)     // Dari consumed-licenses endpoint
+  activeSeats           Int                   @default(0)
+  pendingSeats          Int                   @default(0)
+  unusedSeats           Int                   @default(0)
+  usagePercentage       Float                 @default(0)
+  // Copilot Metrics (aggregate org-level, from /copilot/metrics API)
+  totalSuggestions      Int                   @default(0)     // Total suggestions shown to users
+  totalAccepted         Int                   @default(0)     // Total suggestions accepted
+  acceptanceRate        Float                 @default(0)     // acceptedLines / totalLines * 100
+  totalActiveUsers      Int                   @default(0)     // Unique active users in period
+  month                 String                // Format: "2026-04" untuk easier querying
+  syncedAt              DateTime              @default(now())
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  organization          GitHubOrganization    @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, month])
+}
+
+model CopilotSeatDetail {
+  id                    Int                   @id @default(autoincrement())
+  organizationId        Int
+  githubLogin           String
+  githubId              Int
+  name                  String?
+  lastActivityAt        DateTime?
+  lastActivityEditor    String?               // e.g. "vscode/1.114.0/copilot-chat/0.42.3"
+  lastAuthenticatedAt   DateTime?
+  seatCreatedAt         DateTime?             // When the seat was first assigned
+  licenseType           String?               // "enterprise", "copilot_pro", etc
+  syncedAt              DateTime              @default(now())
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  organization          GitHubOrganization    @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, githubLogin])
+}
+
+model GitHubMember {
+  id                    Int                   @id @default(autoincrement())
+  organizationId        Int
+  githubLogin           String
+  githubId              Int                   @unique
+  email                 String?
+  name                  String?
+  role                  String                @default("member") // admin, member, owner
+  hasCopilotLicense     Boolean               @default(false)
+  githubLicenseType     String?               // e.g. "Enterprise"
+  isActive              Boolean               @default(true)
+  accountType           String?               @default("User")
+  githubCreatedAt       DateTime?
+  lastActivityAt        DateTime?
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  organization          GitHubOrganization    @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, githubLogin])
+}
+
+model GitHubAuditLog {
+  id                    Int                   @id @default(autoincrement())
+  organizationId        Int
+  action                String                // member_invite, repo_create, etc
+  actor                 String                // Username yang melakukan action
+  createdAt             DateTime              @default(now())
+  details               String?               // JSON string untuk data tambahan
+  organization          GitHubOrganization    @relation(fields: [organizationId], references: [id])
+}
+
+model GitHubBillingUsage {
+  id                    Int                   @id @default(autoincrement())
+  organizationId        Int
+  date                  String                // "2026-04-01"
+  product               String                // "Actions", "Copilot", "Packages", etc
+  sku                   String                // "Actions Linux", "Copilot Business", etc
+  quantity              Float                 @default(0)
+  unitType              String?               // "minutes", "seats", "requests", etc
+  pricePerUnit          Float                 @default(0)
+  grossAmount           Float                 @default(0)
+  discountAmount        Float                 @default(0)
+  netAmount             Float                 @default(0)
+  organizationName      String?               // org name from GitHub response
+  repositoryName        String?               // repo name if applicable
+  syncedAt              DateTime              @default(now())
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  organization          GitHubOrganization    @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, date, product, sku])
+}
+
+model GitHubBillingUsageSummary {
+  id                    Int                   @id @default(autoincrement())
+  organizationId        Int
+  month                 String                // "2026-04"
+  product               String                // "Actions", "Copilot", etc
+  sku                   String                // "actions_linux", "copilot_enterprise", etc
+  unitType              String?               // "minutes", "seats", "requests"
+  pricePerUnit          Float                 @default(0)
+  grossQuantity         Float                 @default(0)
+  grossAmount           Float                 @default(0)
+  discountQuantity      Float                 @default(0)
+  discountAmount        Float                 @default(0)
+  netQuantity           Float                 @default(0)
+  netAmount             Float                 @default(0)
+  syncedAt              DateTime              @default(now())
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
+  organization          GitHubOrganization    @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, month, product, sku])
+}
+
+enum LicenseStatus {
+  PENDING
+  SUBMITTED_TO_CISO
+  PENDING_IGA
+  ACCOUNT_CREATED
+  ASSIGNED_TO_USER
+  IN_USE
+  DONE
+  REVOKED
+  AVAILABLE
+}
+
+// Per-user Copilot billing usage — diisi secara manual via upload gambar + OCR
+model CopilotUserBillingUsage {
+  id                   Int      @id @default(autoincrement())
+  organizationId       Int
+  githubLogin          String
+  month                String   // "2026-04"
+  includedRequests     Float    @default(0)
+  includedRequestsMax  Int      @default(1000)
+  billedRequests       Int      @default(0)
+  grossAmount          Float    @default(0)
+  billedAmount         Float    @default(0)
+  importedAt           DateTime @default(now())
+  importedBy           String?  // email user yang import
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  organization         GitHubOrganization @relation(fields: [organizationId], references: [id])
+
+  @@unique([organizationId, githubLogin, month])
+}
